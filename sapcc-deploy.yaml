@@ -1,0 +1,92 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dl-sapcc
+  labels:
+    istio-injection: disabled
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:    
+  name: sapcc-pvc
+  namespace: dl-sapcc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sap-cloud-connector
+  namespace: dl-sapcc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sapcc-app
+  template:
+    metadata:
+      labels:
+        app: sapcc-app
+    spec:
+      containers:
+        - name: sap-cc-image
+          image: gunter04/java11-sapcc:1.0
+          imagePullPolicy: Always  
+          ports:
+          - containerPort: 8443
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"  
+          volumeMounts:
+          - mountPath: /usr/sapcc
+            name: sapcc-volume
+          command: ["/bin/sh"]
+          args: ["-c", "if [ ! -f /usr/sapcc/go.sh ]; then tar -xzof /home/sapcc*.tar.gz && rm /home/*.tar.gz; else echo Already installed, starting; fi; ./go.sh"]   
+      volumes:
+      - name: sapcc-volume
+        persistentVolumeClaim:
+          claimName: sapcc-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    dns.gardener.cloud/dnsnames: dlcc.c-290ae5b.kyma.shoot.live.k8s-hana.ondemand.com
+    dns.gardener.cloud/ttl: "600"
+    dns.gardener.cloud/class: garden
+  labels:
+    app: sapcc-app
+  name: sappcc-service
+  namespace: dl-sapcc
+spec:
+  ports:
+  - name: "adminport"
+    port: 8443
+    targetPort: 8443
+  type: LoadBalancer
+  selector:
+    app: sapcc-app
+# ---
+# dlcc.c-290ae5b.kyma.shoot.live.k8s-hana.ondemand.com
+# apiVersion: dns.gardener.cloud/v1alpha1
+# kind: DNSEntry
+# metadata:
+#   annotations:
+#     dns.gardener.cloud/class: garden
+#   labels:
+#     app.kubernetes.io/name: dlcc-dnsentry
+#   name: dlcc-dnsentry
+#   namespace: dl-sapcc
+# spec:
+#   dnsName: dlcc.c-290ae5b.kyma.shoot.live.k8s-hana.ondemand.com
+#   targets:
+#   - 20.44.229.76
+#   ttl: 600
